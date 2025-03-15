@@ -19,3 +19,79 @@ body {
   background: var(--background);
   font-family: Arial, Helvetica, sans-serif;
 }
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 0, 0, 0;
+  --background-start-rgb: 245, 247, 250;
+  --background-end-rgb: 235, 240, 245;
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: linear-gradient(
+      to bottom,
+      transparent,
+      rgb(var(--background-end-rgb))
+    )
+    rgb(var(--background-start-rgb));
+  min-height: 100vh;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c7d2fe;
+  border-radius: 8px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #4f46e5;
+}
+
+/* Audio player styling */
+audio {
+  height: 36px;
+  border-radius: 8px;
+}
+
+audio::-webkit-media-controls-panel {
+  background-color: #eef2ff;
+}
+
+audio::-webkit-media-controls-play-button {
+  background-color: #4f46e5;
+  border-radius: 50%;
+}
+
+/* Animation utilities */
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: .5;
+  }
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+  .max-w-6xl {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+}

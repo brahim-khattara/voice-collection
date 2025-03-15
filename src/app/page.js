@@ -1,440 +1,139 @@
 "use client";
-import { useState, useRef, useEffect } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { useState } from "react";
+import Link from "next/link";
+import { motion } from "framer-motion";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
-
-const VoiceVisualizer = ({ stream }) => {
-  // VoiceVisualizer component remains unchanged
-  const canvasRef = useRef(null);
-  const animationRef = useRef(null);
-
-  useEffect(() => {
-    if (!stream) return;
-
-    const audioContext = new AudioContext();
-    const source = audioContext.createMediaStreamSource(stream);
-    const analyser = audioContext.createAnalyser();
-    analyser.fftSize = 256;
-    source.connect(analyser);
-
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
-    const bufferLength = analyser.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
-
-    const draw = () => {
-      animationRef.current = requestAnimationFrame(draw);
-      analyser.getByteFrequencyData(dataArray);
-
-      ctx.fillStyle = "rgb(200, 200, 200)";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      const barWidth = (canvas.width / bufferLength) * 2.5;
-      let barHeight;
-      let x = 0;
-
-      for (let i = 0; i < bufferLength; i++) {
-        barHeight = dataArray[i] / 10;
-        ctx.fillStyle = `rgb(255, ${Math.min(barHeight + 100, 255)}, ${Math.min(
-          barHeight + 100,
-          255
-        )})`;
-        ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
-        x += barWidth + 1;
-      }
-    };
-
-    draw();
-
-    return () => {
-      cancelAnimationFrame(animationRef.current);
-      source.disconnect();
-      audioContext.close();
-    };
-  }, [stream]);
-
+export default function LandingPage() {
   return (
-    <canvas
-      ref={canvasRef}
-      width="200"
-      height="60"
-      className="rounded bg-gray-200"
-    />
-  );
-};
-
-export default function Home() {
-  const [isMounted, setIsMounted] = useState(false);
-  const [age, setAge] = useState("");
-  const [recordings, setRecordings] = useState({});
-  const [recordingBlobs, setRecordingBlobs] = useState({}); // Store actual blob data
-  const [isRecording, setIsRecording] = useState(false);
-  const [currentRecording, setCurrentRecording] = useState({
-    number: null,
-    variation: null,
-  });
-  const [stream, setStream] = useState(null);
-  const [isUploading, setIsUploading] = useState(false); // Track upload state
-  const [uploadProgress, setUploadProgress] = useState(0); // Track upload progress
-  const mediaRecorderRef = useRef(null);
-  const audioChunksRef = useRef([]);
-
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
-
-  if (!isMounted) return null; // Prevent SSR mismatch
-
-  const numbers = Array.from({ length: 9 }, (_, i) => i + 1);
-  const variations = ["أ", "ب", "ج"];
-
-  const startRecording = async (number, variation) => {
-    try {
-      const audioStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-      });
-      setStream(audioStream);
-      const mediaRecorder = new MediaRecorder(audioStream);
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
-
-      mediaRecorder.ondataavailable = (event) => {
-        audioChunksRef.current.push(event.data);
-      };
-
-      mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, {
-          type: "audio/wav",
-        });
-        const audioUrl = URL.createObjectURL(audioBlob);
-
-        // Store both the URL for playback and the blob for upload
-        setRecordings((prev) => ({
-          ...prev,
-          [`${number}-${variation}`]: audioUrl,
-        }));
-
-        setRecordingBlobs((prev) => ({
-          ...prev,
-          [`${number}-${variation}`]: audioBlob,
-        }));
-
-        setIsRecording(false);
-        setCurrentRecording({ number: null, variation: null });
-        setStream(null);
-        audioStream.getTracks().forEach((track) => track.stop());
-      };
-
-      setIsRecording(true);
-      setCurrentRecording({ number, variation });
-      mediaRecorder.start();
-
-      setTimeout(() => {
-        if (mediaRecorder.state === "recording") {
-          mediaRecorder.stop();
-        }
-      }, 3000);
-    } catch (error) {
-      console.error("Error accessing microphone:", error);
-      alert(
-        "Error accessing microphone. Please ensure you have granted microphone permissions."
-      );
-    }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      setCurrentRecording({ number: null, variation: null });
-    }
-  };
-
-  // Update the handleSubmit function to fix the error
-  const handleSubmit = async () => {
-    const requiredRecordings = numbers.length * variations.length;
-    const currentRecordings = Object.keys(recordings).length;
-  
-    if (currentRecordings < requiredRecordings) {
-      alert(
-        `يرجى إكمال جميع التسجيلات (${currentRecordings}/${requiredRecordings} تم تسجيلها)`
-      );
-      return;
-    }
-  
-    if (!age) {
-      alert("يرجى إدخال العمر");
-      return;
-    }
-  
-    try {
-      setIsUploading(true);
-      setUploadProgress(0);
-  
-      // Insert participant data into the 'participants' table
-      const { data: participantData, error: participantError } = await supabase
-        .from("participants")
-        .insert([
-          {
-            age: parseInt(age),
-            created_at: new Date().toISOString(),
-            upload_completed: false,
-          },
-        ])
-        .select(); // Use .select() to return the inserted row
-  
-      if (participantError) {
-        console.error("Error saving participant data:", participantError);
-        throw new Error(`Error saving participant data: ${participantError.message}`);
-      } else {
-        console.log("Participant data saved successfully:", participantData);
-        const participantId = participantData[0].id; // Get the auto-generated ID
-        console.log("Auto-generated ID:", participantId);
-      }
-  
-      // Upload each recording to the appropriate folder
-      const uploadPromises = [];
-      let completedUploads = 0;
-  
-      for (const [key, blob] of Object.entries(recordingBlobs)) {
-        const [number, variation] = key.split("-");
-  
-        // Convert Arabic variation characters to Latin letters
-        let variationLatin;
-        switch (variation) {
-          case "أ":
-            variationLatin = "1";
-            break;
-          case "ب":
-            variationLatin = "2";
-            break;
-          case "ج":
-            variationLatin = "3";
-            break;
-          default:
-            variationLatin = variation;
-        }
-  
-        // Create the file path following the desired structure using Latin characters
-        const filePath = `number_${number}/person${participantData[0].id}_var${variationLatin}.wav`;
-  
-        console.log(`Uploading file: ${filePath}`);
-  
-        // Upload the file to Supabase Storage
-        const uploadPromise = supabase.storage
-          .from("recordings")
-          .upload(filePath, blob, {
-            cacheControl: "3600",
-            upsert: false,
-          })
-          .then(({ data, error }) => {
-            if (error) {
-              console.error(`Error uploading recording ${key}:`, error);
-              throw new Error(
-                `Error uploading recording ${key}: ${error.message}`
-              );
-            }
-  
-            // Update progress
-            completedUploads++;
-            setUploadProgress(
-              Math.floor(
-                (completedUploads / Object.keys(recordingBlobs).length) * 100
-              )
-            );
-  
-            return data;
-          });
-  
-        uploadPromises.push(uploadPromise);
-      }
-  
-      // Wait for all uploads to complete
-      await Promise.all(uploadPromises);
-  
-      // Update the participant record to indicate upload completion
-      const { error: updateError } = await supabase
-        .from("participants")
-        .update({ upload_completed: true })
-        .eq("id", participantData[0].id);
-  
-      if (updateError) {
-        console.error("Error updating participant record:", updateError);
-        throw new Error(`Error updating participant record: ${updateError.message}`);
-      }
-  
-      setIsUploading(false);
-      setUploadProgress(100);
-      alert("شكرًا لك على مشاركتك! تم تحميل جميع التسجيلات بنجاح.");
-  
-      // setRecordings({});
-      // setRecordingBlobs({});
-  
-    } catch (error) {
-      console.error("Error submitting recordings:", error);
-      setIsUploading(false);
-      alert(`حدث خطأ أثناء تحميل التسجيلات: ${error.message}`);
-    }
-  };
-
-
-  return (
-    <div dir="rtl" className="min-h-screen bg-gray-100 py-8 px-4">
-      <div className="max-w-4xl mx-auto bg-white rounded-lg shadow-md p-6">
-        <h1 className="text-2xl font-bold mb-6 text-center">
-          جمع التسجيلات الصوتية
-        </h1>
-
-        <div className="bg-blue-100 p-4 rounded-lg mb-6">
-          <h2 className="text-xl font-bold mb-2">هدف المشروع</h2>
-          <p>
-            يهدف هذا المشروع إلى جمع تسجيلات لأرقام من 1 إلى 9 باللغة المزابية،
-            وذلك للمساعدة في بناء نموذج ذكاء اصطناعي قادر على التعرف على الأرقام
-            منطوقة بهذه اللغة. <br />
-            <strong>شكرا مسبقا على دعمنا 😊</strong>
-          </p>
-        </div>
-
-        <div className="bg-yellow-100 p-4 rounded-lg mb-6">
-          <h2 className="text-xl font-bold mb-4">التعليمات:</h2>
-          <ol className="list-decimal list-inside space-y-2">
-            <li>
-              لكل رقم من <strong>1 إلى 9</strong>، قم بتسجيل{" "}
-              <strong>3 متغيرات مختلفة</strong> لطريقة نطقك للرقم (
-              <strong>أ، ب، ج</strong>).
-            </li>
-            <li>
-              إذا كان بالإمكان، اجعل كل تسجيل مختلفًا قليلًا عن الآخر (
-              <strong>همس، صراخ، غناء...</strong>).
-            </li>
-            <li>
-              اضغط على زر <strong>"تسجيل"</strong> لبدء تسجيل الصوت لمتغير معين.
-            </li>
-            <li>
-              أدخل <strong>اسمك وعمرك</strong> في الحقول المخصصة أسفل الصفحة.
-            </li>
-            <li>
-              تأكد أن{" "}
-              <strong>الوقت الإجمالي لكل تسجيل لا يتجاوز 3 ثوانٍ</strong>.
-            </li>
-            <li>
-              يمكنك <strong>إعادة التسجيل</strong> إذا لم تكن راضيًا عن النتيجة.
-            </li>
-            <li>
-              يُرجى <strong>الاستماع إلى كل التسجيلات قبل إرسالها</strong>.
-            </li>
-            <li>
-              تأكد من <strong>تسجيل جميع الأرقام والمتغيرات</strong> (
-              <strong>الإجمالي: 27 تسجيلًا</strong>).
-            </li>
-            <li>
-              بمجرد <strong>إكمال جميع التسجيلات وإدخال بياناتك</strong>، اضغط
-              على زر <strong>"إرسال جميع التسجيلات"</strong> لإرسال بياناتك.
-            </li>
-            <li>
-              تأكد من <strong>السماح للمتصفح بالوصول إلى الميكروفون</strong>،
-              وإلا فلن تتمكن من التسجيل.
-            </li>
-          </ol>
-        </div>
-
-        <div className="space-y-6">
-          {numbers.map((number) => (
-            <div key={number} className="border rounded p-4">
-              <h2 className="text-xl font-semibold mb-4">الرقم {number}</h2>
-              <div className="space-y-4">
-                {variations.map((variation) => {
-                  const recordingKey = `${number}-${variation}`;
-                  const hasRecording = recordings[recordingKey];
-                  const isCurrentlyRecording =
-                    isRecording &&
-                    currentRecording.number === number &&
-                    currentRecording.variation === variation;
-
-                  return (
-                    <div
-                      key={variation}
-                      className="flex items-center space-x-reverse space-x-4"
-                    >
-                      <span className="text-sm w-24">المتغير {variation}</span>
-                      <button
-                        onClick={() =>
-                          isCurrentlyRecording
-                            ? stopRecording()
-                            : startRecording(number, variation)
-                        }
-                        className={`px-4 py-2 rounded min-w-24 ${
-                          isCurrentlyRecording
-                            ? "bg-red-500 text-white"
-                            : hasRecording
-                            ? "bg-green-500 text-white"
-                            : "bg-blue-500 text-white"
-                        }`}
-                      >
-                        {isCurrentlyRecording
-                          ? "إيقاف"
-                          : hasRecording
-                          ? "إعادة التسجيل"
-                          : "تسجيل"}
-                      </button>
-                      {isCurrentlyRecording && stream && (
-                        <VoiceVisualizer stream={stream} />
-                      )}
-                      {hasRecording && (
-                        <audio
-                          controls
-                          src={recordings[recordingKey]}
-                          className="flex-1"
-                        />
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="flex flex-wrap items-center bg-gray-50 px-4 py-2 rounded-lg mt-6 gap-4">
-          <label className="text-sm font-medium text-gray-700 flex items-center">
-            العمر:
-            <input
-              type="number"
-              value={age}
-              onChange={(e) => setAge(e.target.value)}
-              className="mr-2 w-20 p-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              min="0"
-              max="120"
-              placeholder="العمر"
-            />
-          </label>
-        </div>
-
-        {isUploading && (
-          <div className="mt-4">
-            <div className="w-full bg-gray-200 rounded-full h-2.5">
-              <div
-                className="bg-blue-600 h-2.5 rounded-full"
-                style={{ width: `${uploadProgress}%` }}
-              ></div>
-            </div>
-            <p className="text-center mt-2">{uploadProgress}% تم التحميل</p>
-          </div>
-        )}
-
-        <div className="mt-6 text-center">
-          <button
-            onClick={handleSubmit}
-            disabled={isUploading}
-            className={`${
-              isUploading ? "bg-gray-400" : "bg-green-500 hover:bg-green-600"
-            } text-white px-6 py-2 rounded transition-colors`}
+    <div dir="rtl" className="min-h-screen bg-gradient-to-b from-blue-50 to-indigo-100">
+      <div className="container mx-auto px-4 py-16">
+        <header className="text-center mb-16">
+          <motion.h1
+            className="text-4xl md:text-6xl font-bold mb-6 text-indigo-800"
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
           >
-            {isUploading ? "جاري الإرسال..." : "إرسال جميع التسجيلات"}
-          </button>
+            مشروع تسجيل الأرقام المزابية
+          </motion.h1>
+          <motion.p 
+            className="text-xl text-gray-700 max-w-3xl mx-auto"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }} 
+            transition={{ delay: 0.3, duration: 0.6 }}
+          >
+            المساهمة في بناء تقنية الذكاء الاصطناعي للتعرف على الأرقام المنطوقة باللغة المزابية
+          </motion.p>
+        </header>
+
+        <div className="grid md:grid-cols-2 gap-12 items-center max-w-6xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, x: -30 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.5, duration: 0.8 }}
+            className="bg-white rounded-xl shadow-xl p-8"
+          >
+            <h2 className="text-2xl font-bold mb-4 text-indigo-700 text-right">مهمتنا</h2>
+            <p className="mb-6 text-gray-700 leading-relaxed text-right">
+              نهدف إلى جمع مجموعة متنوعة من تسجيلات الأرقام (1-9) المنطوقة باللغة المزابية من أجل تدريب نموذج ذكاء اصطناعي قادر على التعرف عليها بدقة عالية.
+            </p>
+            <p className="mb-6 text-gray-700 leading-relaxed text-right">
+              هذا المشروع يساهم في الحفاظ على اللغة وتعزيز استخدام التكنولوجيا الحديثة للتفاعل معها، مما يساعد على نشرها وتوثيقها للأجيال القادمة.
+            </p>
+            <div className="flex items-center space-x-2 space-x-reverse text-indigo-600">
+              <span>مدة المشاركة: ~5 دقائق فقط</span>
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, x: 30 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.5, duration: 0.8 }}
+            className="bg-indigo-700 text-white rounded-xl shadow-xl p-8"
+          >
+            <h2 className="text-2xl font-bold mb-4 text-right">كيف يمكنك المساعدة</h2>
+            <ul className="space-y-4">
+              <li className="flex items-start">
+                <div className="bg-indigo-500 rounded-full p-1 ml-2 mt-1">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <span className="text-right">تسجيل نطقك للأرقام من 1 إلى 9 باللغة المزابية</span>
+              </li>
+              <li className="flex items-start">
+                <div className="bg-indigo-500 rounded-full p-1 ml-2 mt-1">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <span className="text-right">تقديم 3 متغيرات مختلفة لكل رقم (همس، نطق عادي، غناء...)</span>
+              </li>
+              <li className="flex items-start">
+                <div className="bg-indigo-500 rounded-full p-1 ml-2 mt-1">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <span className="text-right">تسجيل كل رقم بوضوح وبطريقة طبيعية</span>
+              </li>
+            </ul>
+            <div className="mt-8">
+              <Link href="/record" className="block text-center bg-white text-indigo-700 font-bold py-3 px-6 rounded-lg hover:bg-indigo-50 transition-colors duration-300">
+                المشاركة الآن
+              </Link>
+            </div>
+          </motion.div>
+        </div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.8, duration: 0.8 }}
+          className="mt-16 text-center"
+        >
+          <h2 className="text-2xl font-bold mb-6 text-indigo-800 text-right">لماذا هذا المشروع مهم؟</h2>
+          <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+            <div className="bg-white p-6 rounded-lg shadow-md">
+              <div className="bg-indigo-100 p-3 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold mb-2 text-indigo-700 text-right">الحفاظ على التراث</h3>
+              <p className="text-gray-600 text-right">توثيق اللغة المزابية ومفرداتها للأجيال القادمة</p>
+            </div>
+            <div className="bg-white p-6 rounded-lg shadow-md">
+              <div className="bg-indigo-100 p-3 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold mb-2 text-indigo-700 text-right">تطوير التقنية</h3>
+              <p className="text-gray-600 text-right">بناء تقنيات ذكاء اصطناعي تتعرف على اللغة المزابية</p>
+            </div>
+            <div className="bg-white p-6 rounded-lg shadow-md">
+              <div className="bg-indigo-100 p-3 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold mb-2 text-indigo-700 text-right">توسيع الوصول</h3>
+              <p className="text-gray-600 text-right">تمكين المزيد من الأشخاص من التفاعل مع اللغة المزابية</p>
+            </div>
+          </div>
+        </motion.div>
+
+        <div className="mt-16 text-center">
+          <Link
+            href="/record"
+            className="inline-block bg-indigo-700 text-white font-bold py-4 px-8 rounded-lg text-xl hover:bg-indigo-800 transition-colors duration-300 shadow-lg"
+          >
+            المشاركة في المشروع الآن
+          </Link>
         </div>
       </div>
     </div>
